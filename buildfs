@@ -1,0 +1,63 @@
+#!/bin/bash
+
+usage() {
+echo "Export container's filesystem contents as a filesystem
+
+Description:
+  Exports container's filesystem contents as a filesystem and saves it on the
+  local machine.
+
+Usage:
+  buildfs [options] CONTAINER
+
+Examples:
+  buildfs ctrID > myCtr.img
+  buildfs --output=\"myCtr.img\" ctrID
+
+Options:
+  -o, --output string   Write to a specified file (default: stdout, which must
+                        be redirected)
+  -f, --format string   Save image to initrd (default) or erofs"
+}
+
+format="initrd"
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -o|--output)
+      output="$2"
+      shift 2
+      ;;
+    -f|--format)
+      format="$2"
+      shift 2
+      ;;
+    -*|--*)
+      echo "Unknown option $1"
+      usage
+      exit 1
+      ;;
+    *)
+      break;
+      ;;
+  esac
+done
+
+if [ -z "$output" ] || [ "$format" != "initrd" ] && \
+   [ "$format" != "erofs" ]; then
+  usage
+  exit 2  
+fi
+
+CONT_ID=$(podman run -d $1)
+if [ "$format" == "initrd" ]; then
+  podman export $CONT_ID > /tmp/$$.buildfs
+  bsdtar --format=cpio -czf - @/tmp/$$.buildfs > $output
+  rm -f /tmp/$$.buildfs
+elif [ "$format" == "erofs" ]; then
+  podman export $CONT_ID | mkfs.$format --tar=f $output
+else
+  echo "Unknown filesystem"
+fi
+
+podman rm -f $CONT_ID
+
